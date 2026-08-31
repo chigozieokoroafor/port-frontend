@@ -4,6 +4,15 @@ export interface ApiResponse<T> {
     message?: string
     data?: T
     error?: string
+    meta?: {
+        isFirstPage: boolean
+        isLastPage: boolean
+        currentPage: number
+        previousPage: number | null
+        nextPage: number | null
+        pageCount: number
+        totalCount: number
+    }
 }
 
 // Auth Types

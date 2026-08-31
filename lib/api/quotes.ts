@@ -30,9 +30,18 @@ export interface GetQuoteRequestsResponse extends ApiResponse<{ requests: QuoteR
   }
 }
 
-export interface GetUserQuoteRequestsResponse extends ApiResponse<{ quoteRequests: QuoteRequest[] }> {
+export interface GetUserQuoteRequestsResponse extends ApiResponse<{ quoteRequests: QuoteRequest[], meta: any }> {
   data: {
     quoteRequests: QuoteRequest[]
+    meta: {
+      isFirstPage: boolean
+      isLastPage: boolean
+      currentPage: number
+      previousPage: number | null
+      nextPage: number | null
+      pageCount?: number
+      totalCount?: number
+    }
   }
 }
 
@@ -54,8 +63,13 @@ export const quoteApi = {
   },
 
   /** GET /api/quotes/requests/user/:userId — List all quote requests by current user */
-  getUserQuoteRequests(userId: string): Promise<GetUserQuoteRequestsResponse> {
-    return apiClient.get<GetUserQuoteRequestsResponse>(`/quotes/requests/user/${userId}`)
+  getUserQuoteRequests(userId: string, params?: { page?: number; limit?: number }): Promise<GetUserQuoteRequestsResponse> {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', params.page.toString())
+    if (params?.limit) query.append('limit', params.limit.toString())
+    const queryString = query.toString()
+    const url = `/quotes/requests/user/${userId}${queryString ? `?${queryString}` : ''}`
+    return apiClient.get<GetUserQuoteRequestsResponse>(url)
   },
 
   /** GET /api/quotes/requests/:id — Get a specific quote request by ID */

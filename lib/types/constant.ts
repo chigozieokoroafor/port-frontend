@@ -156,6 +156,7 @@ export interface QuoteRequest {
   vehicleInfo?: Record<string, unknown>
   createdAt: string
   updatedAt: string
+  quotes?: Record<string, any>
 }
 
 export type QuoteStatus = "Pending" | "Approved" | "Rejected" | "Reviewed" | "Accepted" | "New" | "In Review" | "Sent"

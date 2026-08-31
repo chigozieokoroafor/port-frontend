@@ -14,7 +14,9 @@ import { EmptyState } from "@/components/customer-dashboard/empty-state"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { quoteApi } from "@/lib/api/quotes"
+import { paymentApi } from "@/lib/api/payment"
 import { useAuth } from '@/lib/context/auth-context'
+import { useToast } from "@/hooks/use-toast"
 
 const STATUS_TO_TAB: Record<string, TabFilter> = {
     pending: "Pending",
@@ -64,24 +66,30 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
     const [currentPage, setCurrentPage] = useState(1)
 
     const [requests, setRequests] = useState<QuoteRequest[]>([])
+    const [totalPages, setTotalPages] = useState(1)
     const [loading, setLoading] = useState(!isEmpty)
     const [error, setError] = useState<string | null>(null)
+    const [paymentLoadingId, setPaymentLoadingId] = useState<string | null>(null)
 
     const router = useRouter()
+    const { toast } = useToast()
 
     const fetchQuotes = useCallback(async () => {
-        if (isEmpty) return
+        if (isEmpty || !user?.id) return
         setLoading(true)
         setError(null)
         try {
-            const res = await quoteApi.getUserQuoteRequests(user?.id as string)
+            const res = await quoteApi.getUserQuoteRequests(user.id, { page: currentPage, limit: PAGE_SIZE })
             setRequests(res.data?.quoteRequests ?? [])
+            if (res.data?.meta) {
+                setTotalPages(res.data.meta.pageCount || 1)
+            }
         } catch {
             setError("Failed to load quotes. Please try again.")
         } finally {
             setLoading(false)
         }
-    }, [isEmpty])
+    }, [isEmpty, user?.id, currentPage])
 
     useEffect(() => {
         fetchQuotes()
@@ -106,14 +114,37 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
         return matchesTab && matchesSearch
     })
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-    const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+    const paginated = filtered
 
     // Reset to page 1 when tab or search changes
     useEffect(() => { setCurrentPage(1) }, [activeTab, search])
 
     function onViewDetails(id: string) {
         router.push(`/user/quotes/${id}`)
+    }
+
+    async function handleProceedToPay(quoteId: string) {
+        if (!quoteId) return
+        setPaymentLoadingId(quoteId)
+        try {
+            const res = await paymentApi.createPaymentV2({
+                quoteId,
+                paymentMethod: "stripe"
+            })
+            if (res.data?.checkoutUrl) {
+                window.location.href = res.data.checkoutUrl
+            } else {
+                throw new Error("No checkout URL returned")
+            }
+        } catch (err: any) {
+            toast({
+                title: "Payment Error",
+                description: err?.message || "Failed to initiate payment. Please try again.",
+                variant: "destructive"
+            })
+        } finally {
+            setPaymentLoadingId(null)
+        }
     }
 
 
@@ -202,6 +233,7 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
                                                     {h}
                                                 </th>
                                             ))}
+                                            <th className="pb-3"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -229,14 +261,18 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
                                                     <td className="py-4 pr-6 text-gray-700 align-top">
                                                         {new Date(q.createdAt).toLocaleDateString("en-GB")}
                                                     </td>
-                                                    {/* <td className="py-4 align-top">
-                                                        <button
-                                                            onClick={() => onViewDetails(q._id || q.id)}
-                                                            className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
-                                                        >
-                                                            View Details
-                                                        </button>
-                                                    </td> */}
+                                                    <td className="py-4 align-top">
+                                                        {q.quotes && q.quotes.status?.toLowerCase() === "pending" && (
+                                                            <Button
+                                                                size="sm"
+                                                                className="bg-[#2563EB] hover:bg-[#2563EB]/80 text-white"
+                                                                disabled={paymentLoadingId === q.quotes.id}
+                                                                onClick={() => handleProceedToPay(q.quotes?.id)}
+                                                            >
+                                                                {paymentLoadingId === q.quotes.id ? "Loading..." : "Proceed to Pay"}
+                                                            </Button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))
                                         )}
