@@ -35,14 +35,19 @@ export default function SignInPage() {
         setFrontError(null)
 
         try {
-            await login({
+            const res = await login({
                 email: formData.email,
                 password: formData.password,
             })
-            if (user?.role === 'Customer') {
+            
+            const role = res?.data?.user?.role?.toLowerCase()
+            
+            if (role === 'customer') {
                 router.push('/user/dashboard')
-            } else {
+            } else if (role === 'admin' || role === 'super admin' || role === 'superadmin') {
                 router.push('/admin/dashboard')
+            } else {
+                router.push('/user/dashboard')
             }
         } catch (err: unknown) {
             if (err instanceof Error) {

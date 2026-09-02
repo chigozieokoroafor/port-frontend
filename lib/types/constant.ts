@@ -10,10 +10,11 @@ export type TabFilter = "All" | "Active" | "Pending" | "Completed" | "Failed" | 
 
 export interface Shipment {
     id: string
+    shipmentId: string
     vehicle: string
     route: string
     status: ShipmentStatus
-    estimatedArrival: string
+    estimatedArrival: string | null
 }
 
 
@@ -79,14 +80,17 @@ export interface MainDocument {
 export const DOC_FILTER_OPTIONS = ["All", "Approved", "Pending", "Rejected"]
 
 
-export type PaymentStatus = "Completed" | "Pending" | "Failed"
+export type PaymentStatus = "Completed" | "Pending" | "Failed" | "Paid"
 
 export interface Payment {
+    id?: string
     paymentId: string
-    shipmentId: string
+    shipmentId: string | null
     date: string
-    amount: string
+    amount: string | number
+    currency?: string
     status: PaymentStatus
+    receiptUrl?: string | null
 }
 
 export const PAYMENT_FILTER_OPTIONS = ["All", "Completed", "Pending", "Failed"]
@@ -156,7 +160,18 @@ export interface QuoteRequest {
   vehicleInfo?: Record<string, unknown>
   createdAt: string
   updatedAt: string
-  quotes?: Record<string, any>
+  userId?: string
+  notes?: string | null
+  reviewedByUserId?: string | null
+  reviewedBy?: Record<string, any> | null
+  reviewedDate?: string | null
+  user?: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  }
+  quotes?: Record<string, any> | null
 }
 
 export type QuoteStatus = "Pending" | "Approved" | "Rejected" | "Reviewed" | "Accepted" | "New" | "In Review" | "Sent"

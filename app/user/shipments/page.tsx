@@ -1,82 +1,71 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { FILTER_OPTIONS, Shipment, TabFilter } from "@/lib/types/constant"
-import { Pagination } from "@/components/user-shipment/pagination"
 import { ActiveIcon, CompletedIcon, FailedIcon, PendingIcon, StatCard, StatusBadge } from "@/components/user-shipment/status-icon"
 import { ShipmentTab } from "@/components/user-shipment/bars"
 import { FilterDropdown } from "@/components/customer-dashboard/filter-dropdown"
 import { EmptyState } from "@/components/customer-dashboard/empty-state"
+import { Pagination } from "@/components/customer-dashboard/payment/status" // Using this Pagination since user-shipment pagination wasn't verified fully
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { shipmentApi } from "@/lib/api/shipment"
+import { useAuth } from "@/lib/context/auth-context"
 
-// ── Mock Data
+const PAGE_SIZE = 10
 
-const MOCK_SHIPMENTS: Shipment[] = [
-    {
-        id: "SHP-2026-001",
-        vehicle: "BMW 3 Series\n2022",
-        route: "Southampton, UK\n→ Lagos, Nigeria",
-        status: "In Transit",
-        estimatedArrival: "10/02/2026",
-    },
-    {
-        id: "SHP-2026-002",
-        vehicle: "Toyota Land\nCruiser 2023",
-        route: "Liverpool, UK\n→ Dubai, UAE",
-        status: "Loaded On Vessel",
-        estimatedArrival: "10/02/2026",
-    },
-    {
-        id: "SHP-2025-156",
-        vehicle: "Mercedes-\nBenz Sprinter 2021",
-        route: "London, UK\n→ Kingston, Jamaica",
-        status: "Completed",
-        estimatedArrival: "10/02/2026",
-    },
-    {
-        id: "SHP-2025-156",
-        vehicle: "Audi A4 2020",
-        route: "Manchester, UK\n→ Accra, Ghana",
-        status: "Vehicle Received",
-        estimatedArrival: "10/02/2026",
-    },
-    {
-        id: "SHP-2025-156",
-        vehicle: "BMW 3 Series 2022",
-        route: "Southampton, UK\n→ Lagos, Nigeria",
-        status: "In Transit",
-        estimatedArrival: "10/02/2026",
-    },
-    {
-        id: "SHP-2025-156",
-        vehicle: "Toyota Land\nCruiser 2023",
-        route: "Southampton, UK\n→ Lagos, Nigeria",
-        status: "In Transit",
-        estimatedArrival: "10/02/2026",
-    },
-]
-
-// ── Main Page
-interface MyShipmentsPageProps {
-    isEmpty?: boolean
-}
-
-export default function MyShipmentsPage({ isEmpty = false, }: Readonly<MyShipmentsPageProps>) {
+export default function MyShipmentsPage() {
+    const { user } = useAuth()
     const [activeTab, setActiveTab] = useState<TabFilter>("All")
     const [search, setSearch] = useState("")
-    const [filter, setFilter] = useState("Status")
+    const [filter, setFilter] = useState("All Shipments")
+    const [shipments, setShipments] = useState<Shipment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
+    
     const router = useRouter()
 
-    const stats = isEmpty
-        ? { active: 0, completed: 0, pending: 0, failed: 0 }
-        : { active: 15, completed: 25, pending: 5, failed: 2 }
+    const fetchShipments = useCallback(async () => {
+        if (!user?.id) return
+        setLoading(true)
+        try {
+            const activeStatus = activeTab !== "All" ? activeTab : (filter !== "All Shipments" ? filter : undefined)
+            
+            const res = await shipmentApi.getUserShipments(user.id, { 
+                page: currentPage, 
+                limit: PAGE_SIZE,
+                search: search || undefined,
+                status: activeStatus
+            })
+            
+            setShipments(res.data)
+            setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+        } catch (error) {
+            console.error("Failed to load shipments:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [user?.id, currentPage, search, activeTab, filter])
 
-    const shipments = isEmpty ? [] : MOCK_SHIPMENTS
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchShipments()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchShipments])
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, activeTab, filter])
+
+    const stats = { active: 0, completed: 0, pending: 0, failed: 0 }
+    const isEmpty = shipments.length === 0 && !loading && !search && activeTab === "All" && filter === "All Shipments"
 
     function onViewDetails(id: string) {
         router.push(`/user/shipments/${id}`)
@@ -152,13 +141,13 @@ export default function MyShipmentsPage({ isEmpty = false, }: Readonly<MyShipmen
                                     <tbody>
                                         {shipments.map((s, i) => (
                                             <tr key={i + 1} className="border-b border-gray-100 last:border-0">
-                                                <td className="py-4 pr-6 text-gray-700 align-top">{s.id}</td>
+                                                <td className="py-4 pr-6 text-gray-700 align-top">{s.shipmentId || s.id}</td>
                                                 <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-line">{s.vehicle}</td>
                                                 <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-line">{s.route}</td>
                                                 <td className="py-4 pr-6 align-top">
                                                     <StatusBadge status={s.status} />
                                                 </td>
-                                                <td className="py-4 pr-6 text-gray-700 align-top">{s.estimatedArrival}</td>
+                                                <td className="py-4 pr-6 text-gray-700 align-top">{s.estimatedArrival || '—'}</td>
                                                 <td className="py-4 align-top">
                                                     <button
                                                         onClick={() => onViewDetails(s.id)}
@@ -173,7 +162,7 @@ export default function MyShipmentsPage({ isEmpty = false, }: Readonly<MyShipmen
                                 </table>
                             </div>
 
-                            <Pagination current={1} total={40} />
+                            <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
                         </CardContent>
                     </Card>
                 </>

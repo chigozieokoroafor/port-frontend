@@ -45,6 +45,15 @@ export interface GetUserQuoteRequestsResponse extends ApiResponse<{ quoteRequest
   }
 }
 
+export interface QuoteMetricsResponse extends ApiResponse<{ newQuotes: number; allQuotes: number; acceptedQuotes: number; pendingQuotes: number }> {
+  data: {
+    newQuotes: number
+    allQuotes: number
+    acceptedQuotes: number
+    pendingQuotes: number
+  }
+}
+
 // Public API
 export const quoteApi = {
   /** POST /api/quotes/request — Submit a new quote request (rate-limited: 5/hr) */
@@ -106,8 +115,8 @@ export const adminQuoteApi = {
   },
 
   /** GET /api/admin/quotes/request/:id — Get a specific quote's details */
-  getQuoteRequestById(id: string): Promise<CreateQuoteResponse> {
-    return apiClient.get<CreateQuoteResponse>(`/admin/quotes/request/${id}`)
+  getQuoteRequestById(id: string): Promise<QuoteRequestResponse> {
+    return apiClient.get<QuoteRequestResponse>(`/admin/quotes/requests/${id}`)
   },
 
   /** GET /api/admin/quotes/:id — Get a specific quote's details */
@@ -124,5 +133,10 @@ export const adminQuoteApi = {
   /** POST /api/admin/quotes/:id/send — Send the quote email to the customer */
   sendQuote(id: string): Promise<ApiResponse<null>> {
     return apiClient.post<ApiResponse<null>>(`/admin/quotes/${id}/send`)
+  },
+
+  /** GET /api/admin/quotes/metrics — Get quotes metrics */
+  getMetrics(): Promise<QuoteMetricsResponse> {
+    return apiClient.get<QuoteMetricsResponse>('/admin/quotes/metrics')
   },
 }

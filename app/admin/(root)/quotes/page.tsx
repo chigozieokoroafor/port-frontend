@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { StatCard, QuoteIcon, AllQuotesIcon, AcceptedIcon, PendingIcon, QuoteStatusBadge, SearchFilterBar, Pagination } from "@/components/admin/comp"
 import { FILTER_OPTIONS } from "@/components/admin/type"
-import { quoteApi } from "@/lib/api/quotes"
+import { adminQuoteApi, quoteApi } from "@/lib/api/quotes"
 import { QuoteRequest } from "@/lib/types/constant"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -35,6 +35,12 @@ export default function AdminQuotesPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
+    const [metrics, setMetrics] = useState({
+        newQuotes: 0,
+        allQuotes: 0,
+        acceptedQuotes: 0,
+        pendingQuotes: 0
+    })
     const router = useRouter()
 
     function onViewDetails(id: string) {
@@ -45,8 +51,14 @@ export default function AdminQuotesPage() {
         setLoading(true)
         setError(null)
         try {
-            const res = await quoteApi.getAllQuoteRequests()
+            const [res, metricsRes] = await Promise.all([
+                quoteApi.getAllQuoteRequests(),
+                adminQuoteApi.getMetrics()
+            ])
             setRequests(res.data.requests ?? [])
+            if (metricsRes.data) {
+                setMetrics(metricsRes.data)
+            }
         } catch (err) {
             console.error("Failed to load quotes.", err)
             setError("Failed to load quotes. Please try again.")
@@ -81,12 +93,6 @@ export default function AdminQuotesPage() {
         })
     }, [requests, search, filter])
 
-    const stats = useMemo(() => ({
-        newQuotes: requests.filter(q => q.status === "Pending" && isNew(q.createdAt)),
-        acceptedQuotes: requests.filter(q => q.status === "Accepted"),
-        pendingQuotes: requests.filter(q => q.status === "Pending"),
-    }), [requests])
-
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
     
     // Clamp current page in case filtered results shrink
@@ -106,10 +112,10 @@ export default function AdminQuotesPage() {
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard count={stats.newQuotes.length} label="New Quotes" icon={<QuoteIcon />} />
-                <StatCard count={requests.length} label="All Quotes" icon={<AllQuotesIcon />} />
-                <StatCard count={stats.acceptedQuotes.length} label="Accepted Quotes" icon={<AcceptedIcon />} />
-                <StatCard count={stats.pendingQuotes.length} label="Pending Quotes" icon={<PendingIcon />} />
+                <StatCard count={metrics.newQuotes} label="New Quotes" icon={<QuoteIcon />} />
+                <StatCard count={metrics.allQuotes} label="All Quotes" icon={<AllQuotesIcon />} />
+                <StatCard count={metrics.acceptedQuotes} label="Accepted Quotes" icon={<AcceptedIcon />} />
+                <StatCard count={metrics.pendingQuotes} label="Pending Quotes" icon={<PendingIcon />} />
             </div>
 
             <Card className="bg-[#F8FAFC] border-[0.5px] border-[#999999]">

@@ -1,38 +1,19 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatCard, SearchFilterBar, Pagination } from "@/components/admin/comp"
-// import { QuoteStatus } from "@/components/admin/type"
 import { cn } from "@/lib/utils"
+import { shipmentApi, AdminShipment } from "@/lib/api/shipment"
+import { useRouter } from "next/navigation"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ShipmentStatus = "In Transit" | "Delivered" | "Custom Clearance" | "Delayed" | "Port of Origin" | "Port of Destination"
 
-interface Shipment {
-    id: string
-    customerName: string
-    vehicle: string
-    route: string
-    status: ShipmentStatus
-}
-
-// ── Mock Data ─────────────────────────────────────────────────────────────────
-
-const MOCK_SHIPMENTS: Shipment[] = [
-    { id: "QT-5429", customerName: "John Anderson", vehicle: "Toyota Camry 2020", route: "Los Angeles → Tokyo", status: "In Transit" },
-    { id: "QT-5428", customerName: "Maria Santos", vehicle: "WilliamsMercedes C-...", route: "New York → London", status: "In Transit" },
-    { id: "QT-5427", customerName: "Sarah Williams", vehicle: "Honda CR-V 2021", route: "Miami → Dubai", status: "Delivered" },
-    { id: "QT-5426", customerName: "David Park", vehicle: "BMW X5 2022", route: "Seattle → Sydney", status: "Custom Clearance" },
-    { id: "QT-5425", customerName: "Robert Chen", vehicle: "Mercedes C-Class 2019", route: "San Francisco → Seoul", status: "Delivered" },
-    { id: "QT-5424", customerName: "Emma Johnson", vehicle: "Audi A4 2020", route: "Chicago → Hamburg", status: "Delayed" },
-    { id: "QT-5423", customerName: "Michael Brown", vehicle: "Ford F-150 2021", route: "Houston → Rotterdam", status: "Delayed" },
-    { id: "QT-5422", customerName: "Lisa Garcia", vehicle: "Nissan Altima 2022", route: "Phoenix → Barcelona", status: "Delivered" },
-]
-
 const FILTER_OPTIONS = ["All", "Active", "Completed", "Delayed"]
+const PAGE_SIZE = 10
 
 // ── Stat Icons ────────────────────────────────────────────────────────────────
 
@@ -107,15 +88,50 @@ interface AdminShipmentsPageProps {
 export default function AdminShipmentsPage({ onViewDetails }: AdminShipmentsPageProps) {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState("Status")
+    const [shipments, setShipments] = useState<AdminShipment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
+    const router = useRouter()
 
-    const filtered = MOCK_SHIPMENTS.filter((s) => {
-        const matchesSearch =
-            !search ||
-            s.id.toLowerCase().includes(search.toLowerCase()) ||
-            s.customerName.toLowerCase().includes(search.toLowerCase()) ||
-            s.vehicle.toLowerCase().includes(search.toLowerCase())
-        return matchesSearch
-    })
+    const fetchShipments = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await shipmentApi.getAdminShipments({
+                page: currentPage,
+                limit: PAGE_SIZE,
+                search: search || undefined,
+                status: filter !== "Status" && filter !== "All" ? filter : undefined
+            })
+            
+            setShipments(res.data)
+            setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+        } catch (error) {
+            console.error("Failed to load shipments:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [currentPage, search, filter])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchShipments()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchShipments])
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
+
+    const handleViewDetails = (id: string) => {
+        if (onViewDetails) {
+            onViewDetails(id)
+        } else {
+            router.push(`/admin/shipments/${id}`)
+        }
+    }
 
     return (
         <div className="space-y-6 lg:space-y-8">
@@ -164,18 +180,18 @@ export default function AdminShipmentsPage({ onViewDetails }: AdminShipmentsPage
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((s, i) => (
-                                    <tr key={i + 1} className="border-b border-gray-100 last:border-0">
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{s.id}</td>
+                                {shipments.map((s, i) => (
+                                    <tr key={s.id ?? i} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{s.shipmentId || s.id}</td>
                                         <td className="py-4 pr-6 text-gray-700 align-middle">{s.customerName}</td>
                                         <td className="py-4 pr-6 text-gray-700 align-middle">{s.vehicle}</td>
                                         <td className="py-4 pr-6 text-gray-700 align-middle">{s.route}</td>
                                         <td className="py-4 pr-6 align-middle">
-                                            <ShipmentStatusBadge status={s.status} />
+                                            <ShipmentStatusBadge status={s.status as ShipmentStatus} />
                                         </td>
                                         <td className="py-4 align-middle">
                                             <button
-                                                onClick={() => onViewDetails?.(s.id)}
+                                                onClick={() => handleViewDetails(s.id)}
                                                 className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
                                             >
                                                 View Details
@@ -187,7 +203,7 @@ export default function AdminShipmentsPage({ onViewDetails }: AdminShipmentsPage
                         </table>
                     </div>
 
-                    <Pagination current={1} total={40} />
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
                 </CardContent>
             </Card>
         </div>

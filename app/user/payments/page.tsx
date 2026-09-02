@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,35 +9,51 @@ import { Payment, PAYMENT_FILTER_OPTIONS } from "@/lib/types/constant"
 import { FilterDropdown } from "@/components/customer-dashboard/filter-dropdown"
 import { PaymentStatusBadge, PaymentStatCard, TotalCostIcon, AmountPaidIcon, OutstandingIcon, Pagination } from "@/components/customer-dashboard/payment/status"
 import { EmptyState } from "@/components/customer-dashboard/empty-state"
+import { paymentApi } from "@/lib/api/payment"
+import { useAuth } from "@/lib/context/auth-context"
 
-// ── Mock Data
+const PAGE_SIZE = 10
 
-const MOCK_PAYMENTS: Payment[] = [
-    { paymentId: "PAY-001", shipmentId: "SHP-2026-001", date: "15/01/2026", amount: "£1,250.00", status: "Completed" },
-    { paymentId: "PAY-001", shipmentId: "SHP-2026-001", date: "15/01/2026", amount: "£1,250.00", status: "Completed" },
-    { paymentId: "PAY-001", shipmentId: "SHP-2026-001", date: "15/01/2026", amount: "£1,250.00", status: "Pending" },
-    { paymentId: "PAY-001", shipmentId: "SHP-2026-001", date: "15/01/2026", amount: "£1,250.00", status: "Completed" },
-    { paymentId: "PAY-001", shipmentId: "SHP-2026-001", date: "15/01/2026", amount: "£1,250.00", status: "Pending" },
-]   
-
-interface PaymentsPageProps {
-    onMakePayment?: () => void
-    isEmpty?: boolean
-}
-
-export default function PaymentsPage({ onMakePayment, isEmpty = true }: Readonly<PaymentsPageProps>) {
+export default function PaymentsPage() {
+    const { user } = useAuth()
     const [search, setSearch] = useState("")
-    const [filter, setFilter] = useState("Status")
+    const [filter, setFilter] = useState("All")
+    const [payments, setPayments] = useState<Payment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
 
-    const filtered = isEmpty ? [] : MOCK_PAYMENTS.filter(p => {
-        const matchesSearch =
-            !search ||
-            p.paymentId.toLowerCase().includes(search.toLowerCase()) ||
-            p.shipmentId.toLowerCase().includes(search.toLowerCase())
-        const matchesFilter =
-            filter === "Status" || filter === "All" || p.status === filter
-        return matchesSearch && matchesFilter
-    })
+    const fetchPayments = useCallback(async () => {
+        if (!user?.id) return
+        setLoading(true)
+        try {
+            const res = await paymentApi.getUserPaymentHistory(user.id, { page: currentPage, limit: PAGE_SIZE })
+            setPayments(res.data)
+            setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+        } catch (error) {
+            console.error("Failed to load payment history:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [user?.id, currentPage])
+
+    useEffect(() => {
+        fetchPayments()
+    }, [fetchPayments])
+
+    const filtered = useMemo(() => {
+        return payments.filter(p => {
+            const matchesSearch =
+                !search ||
+                p.paymentId.toLowerCase().includes(search.toLowerCase()) ||
+                p.shipmentId?.toLowerCase().includes(search.toLowerCase())
+            const matchesFilter =
+                filter === "All" || p.status === filter
+            return matchesSearch && matchesFilter
+        })
+    }, [payments, search, filter])
+
+    const isEmpty = payments.length === 0
 
     return (
         <div className="space-y-6 lg:space-y-8">
@@ -51,12 +67,12 @@ export default function PaymentsPage({ onMakePayment, isEmpty = true }: Readonly
                         View your payment history and outstanding balances
                     </p>
                 </div>
-                <Button
+                {/* <Button
                     className="bg-[#2563EB] hover:bg-[#2563EB]/80 text-white shrink-0"
-                    onClick={onMakePayment}
+                    onClick={() => {}}
                 >
                     Make a Payment
-                </Button>
+                </Button> */}
             </div>
 
             {/* Stat Cards */}
@@ -120,21 +136,34 @@ export default function PaymentsPage({ onMakePayment, isEmpty = true }: Readonly
                             </thead>
                             <tbody>
                                 {filtered.map((p, i) => (
-                                    <tr key={i + 1} className="border-b border-gray-100 last:border-0">
+                                    <tr key={p.id ?? i} className="border-b border-gray-100 last:border-0">
                                         <td className="py-4 pr-6 text-gray-700 align-middle">{p.paymentId}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.shipmentId}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.date}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle font-medium">{p.amount}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.shipmentId || '—'}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">
+                                            {new Date(p.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                        </td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle font-medium">
+                                            {p.currency === 'GBP' ? '£' : p.currency === 'USD' ? '$' : p.currency === 'EUR' ? '€' : p.currency}{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                        </td>
                                         <td className="py-4 pr-6 align-middle">
                                             <PaymentStatusBadge status={p.status} />
                                         </td>
                                         <td className="py-4 align-middle">
-                                            <button
-                                                className="text-gray-500 hover:text-gray-700 transition-colors"
-                                                aria-label="Download receipt"
-                                            >
-                                                <Download className="w-5 h-5" />
-                                            </button>
+                                            {p.receiptUrl ? (
+                                                <a
+                                                    href={p.receiptUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[#2563EB] hover:text-[#1d4ed8] transition-colors"
+                                                    aria-label="Download receipt"
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-300">
+                                                    <Download className="w-5 h-5" />
+                                                </span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -142,7 +171,7 @@ export default function PaymentsPage({ onMakePayment, isEmpty = true }: Readonly
                         </table>
                     </div>
 
-                    <Pagination current={1} total={40} />
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
                 </CardContent>
             </Card>
             )}

@@ -314,30 +314,33 @@ export function UpdateStatusDropdown({ value, onChange }: Readonly<{ value: stri
     )
 }
     
-export function SpinnerInput({ label, value, onChange }: Readonly<{ label: string; value: number; onChange: (v: number) => void }>) {
+export function SpinnerInput({ label, value, onChange, disabled }: Readonly<{ label: string; value: number; onChange: (v: number) => void; disabled?: boolean }>) {
     return (
-        <div className="space-y-1.5">
+        <div className={`space-y-1.5 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
             <Label className="text-sm font-semibold text-[#111827]">{label}</Label>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+            <div className={`flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white ${disabled ? 'bg-gray-50' : ''}`}>
                 <span className="pl-3 text-sm text-gray-400 select-none">£</span>
                 <input
                     type="number"
                     value={value}
                     onChange={e => onChange(Number(e.target.value))}
-                    className="flex-1 px-2 py-3 text-sm text-gray-800 outline-none bg-transparent"
+                    disabled={disabled}
+                    className="flex-1 px-2 py-3 text-sm text-gray-800 outline-none bg-transparent disabled:cursor-not-allowed"
                 />
                 <div className="flex flex-col border-l border-gray-200">
                     <button
                         type="button"
                         onClick={() => onChange(value + 1)}
-                        className="px-2 py-1 text-gray-400 hover:bg-gray-50 text-xs leading-none"
+                        disabled={disabled}
+                        className="px-2 py-1 text-gray-400 hover:bg-gray-50 text-xs leading-none disabled:cursor-not-allowed"
                     >
                         ▲
                     </button>
                     <button
                         type="button"
                         onClick={() => onChange(Math.max(0, value - 1))}
-                        className="px-2 py-1 text-gray-400 hover:bg-gray-50 text-xs leading-none border-t border-gray-200"
+                        disabled={disabled}
+                        className="px-2 py-1 text-gray-400 hover:bg-gray-50 text-xs leading-none border-t border-gray-200 disabled:cursor-not-allowed"
                     >
                         ▼
                     </button>

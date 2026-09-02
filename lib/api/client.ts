@@ -59,6 +59,12 @@ async function request<T>( endpoint: string, options: RequestOptions = {} ): Pro
     const data = (await response.json()) as ApiResponse<T>
 
     if (!response.ok) {
+        if (response.status === 401) {
+            removeToken()
+            if (globalThis.window !== undefined) {
+                window.location.href = '/'
+            }
+        }
         const errorMessage = data.message || data.error || 'API request failed'
         throw new ApiError(response.status, errorMessage, data)
     }

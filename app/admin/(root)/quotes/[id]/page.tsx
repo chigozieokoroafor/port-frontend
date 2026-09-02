@@ -104,12 +104,13 @@ function CustomerTab({ detail, onNewQuote }: Readonly<{ detail: QuoteDetail; onN
     )
 }
 
-function AdminTab({ pricing, onPricingChange, onSendQuote, onConvertToShipment, isSending }: Readonly<{
+function AdminTab({ pricing, onPricingChange, onSendQuote, onConvertToShipment, isSending, hasExistingQuote }: Readonly<{
     pricing: AdminPricing
     onPricingChange: (p: AdminPricing) => void
     onSendQuote?: () => void
     onConvertToShipment?: () => void
     isSending?: boolean
+    hasExistingQuote?: boolean
 }>) {
     const total =
         pricing.shippingCost +
@@ -127,21 +128,25 @@ function AdminTab({ pricing, onPricingChange, onSendQuote, onConvertToShipment, 
                         label="Shipping Cost"
                         value={pricing.shippingCost}
                         onChange={v => onPricingChange({ ...pricing, shippingCost: v })}
+                        disabled={hasExistingQuote}
                     />
                     <SpinnerInput
                         label="Insurance"
                         value={pricing.insurance}
                         onChange={v => onPricingChange({ ...pricing, insurance: v })}
+                        disabled={hasExistingQuote}
                     />
                     <SpinnerInput
                         label="Handling Fees"
                         value={pricing.handlingFees}
                         onChange={v => onPricingChange({ ...pricing, handlingFees: v })}
+                        disabled={hasExistingQuote}
                     />
                     <SpinnerInput
                         label="Customs & Documentation"
                         value={pricing.customsDocumentation}
                         onChange={v => onPricingChange({ ...pricing, customsDocumentation: v })}
+                        disabled={hasExistingQuote}
                     />
 
                     <div className="flex items-center justify-between pt-2 border-t border-gray-100">
@@ -160,7 +165,8 @@ function AdminTab({ pricing, onPricingChange, onSendQuote, onConvertToShipment, 
                         value={pricing.notes}
                         onChange={e => onPricingChange({ ...pricing, notes: e.target.value })}
                         placeholder="Add internal notes here..."
-                        className="min-h-[120px] resize-none text-sm text-gray-500"
+                        disabled={hasExistingQuote}
+                        className="min-h-[120px] resize-none text-sm text-gray-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                 </CardContent>
             </Card>
@@ -176,7 +182,7 @@ function AdminTab({ pricing, onPricingChange, onSendQuote, onConvertToShipment, 
                 <Button
                     className="flex-1 bg-[#2563EB] hover:bg-[#2563EB]/80 text-white"
                     onClick={onSendQuote}
-                    disabled={isSending}
+                    disabled={isSending || hasExistingQuote}
                 >
                     {isSending ? "Sending..." : "Send Quote"}
                 </Button>
@@ -198,6 +204,7 @@ export default function AdminQuoteDetailPage() {
     const [error, setError] = useState<string | null>(null)
     const [isSending, setIsSending] = useState(false)
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+    const [hasExistingQuote, setHasExistingQuote] = useState(false)
 
     // ── Fetch quote ──────────────────────────────────────────────────────────
 
@@ -206,14 +213,14 @@ export default function AdminQuoteDetailPage() {
         setError(null)
         try {
             const res = await adminQuoteApi.getQuoteRequestById(quoteId)
-            const q = res.data.request
+            const q = res.data
             console.log('quote', q)
             setDetail({
                 id: q.id,
                 referenceId: q.referenceId,
                 customer: {
-                    name: q.customer?.fullName ?? "—",
-                    email: q.customer?.email ?? "—",
+                    name: q.customer?.fullName ?? q.user?.firstName ? `${q.user.firstName} ${q.user.lastName}` : "—",
+                    email: q.customer?.email ?? q.user?.email ?? "—",
                     phone: q.customer?.phone ?? "—",
                     company: q.customer?.companyName ?? "—",
                 },
@@ -237,13 +244,26 @@ export default function AdminQuoteDetailPage() {
             })
 
             setStatus(q.status ?? "New")
-            setPricing({
-                shippingCost: q.shippingCost ?? 0,
-                insurance: q.insurance ?? 0,
-                handlingFees: q.handlingFees ?? 0,
-                customsDocumentation: q.customsDocumentation ?? 0,
-                notes: q.notes ?? "",
-            })
+            if (q.quotes && q.quotes.pricing) {
+                setHasExistingQuote(true)
+                const customsCharge = q.quotes.pricing.additionalCharges?.find((c: any) => c.description === 'Customs & Documentation')?.amount || 0;
+                setPricing({
+                    shippingCost: q.quotes.pricing.shippingCost ?? 0,
+                    insurance: q.quotes.pricing.insuranceCost ?? 0,
+                    handlingFees: q.quotes.pricing.handlingFees ?? 0,
+                    customsDocumentation: customsCharge,
+                    notes: q.quotes.notes ?? q.notes ?? "",
+                })
+            } else {
+                setHasExistingQuote(false)
+                setPricing({
+                    shippingCost: q.shippingCost ?? 0,
+                    insurance: q.insurance ?? 0,
+                    handlingFees: q.handlingFees ?? 0,
+                    customsDocumentation: q.customsDocumentation ?? 0,
+                    notes: q.notes ?? "",
+                })
+            }
         } catch (err) {
             console.error("Failed to fetch quote:", err)
             setError("Failed to load quote. Please try again.")
@@ -352,6 +372,7 @@ export default function AdminQuoteDetailPage() {
                         onPricingChange={setPricing}
                         onSendQuote={handleSendQuote}
                         isSending={isSending}
+                        hasExistingQuote={hasExistingQuote}
                     />
                 </TabsContent>
             </Tabs>

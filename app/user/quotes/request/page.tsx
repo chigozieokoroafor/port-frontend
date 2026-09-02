@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/context/auth-context'
 import { CustomerInfo, VehicleInfo, RouteInfo } from '@/lib/types/constant'
@@ -13,6 +14,7 @@ import { Step4Review } from '@/components/customer-dashboard/quotes/form/Step4'
 import { SuccessModal } from '@/components/customer-dashboard/quotes/SuccessModal'
 
 export default function RequestQuotePage() {
+    const router = useRouter()
     const { user } = useAuth()
     const [step, setStep] = useState(1)
     const [submitted, setSubmitted] = useState(false)
@@ -115,7 +117,7 @@ export default function RequestQuotePage() {
 
             <div className="flex items-center justify-between max-w-4xl mx-auto pt-2">
                 <Button variant="outline" className="w-44 border-[#2563EB] text-[#2563EB] hover:bg-[#DEE8FC]"
-                    onClick={step === 1 ? undefined : handleBack} disabled={isLoading}>
+                    onClick={step === 1 ? () => router.back() : handleBack} disabled={isLoading}>
                     {step === 1 ? 'Cancel' : 'Back'}
                 </Button>
                 <Button className="w-44 bg-[#2563EB] hover:bg-[#2563EB]/80 text-white"
