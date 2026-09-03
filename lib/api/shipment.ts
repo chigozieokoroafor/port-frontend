@@ -37,6 +37,15 @@ export interface GetAdminShipmentsResponse extends ApiResponse<AdminShipment[]> 
   }
 }
 
+export interface GetAdminShipmentMetricsResponse extends ApiResponse<{ all: number, active: number, completed: number, delayed: number }> {
+  data: {
+    all: number
+    active: number
+    completed: number
+    delayed: number
+  }
+}
+
 export const shipmentApi = {
   getUserShipments(userId: string, params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<GetUserShipmentsResponse> {
     const query = new URLSearchParams()
@@ -58,5 +67,13 @@ export const shipmentApi = {
     
     const queryString = query.toString()
     return apiClient.get<GetAdminShipmentsResponse>(`/shipments/admin${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getAdminShipmentMetrics(): Promise<GetAdminShipmentMetricsResponse> {
+    return apiClient.get<GetAdminShipmentMetricsResponse>('/shipments/admin/metrics')
+  },
+
+  createShipment(payload: { quoteRequestId: string }): Promise<ApiResponse<any>> {
+    return apiClient.post<ApiResponse<any>>('/shipments/create', payload)
   }
 }

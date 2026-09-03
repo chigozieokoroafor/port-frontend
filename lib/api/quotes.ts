@@ -16,8 +16,29 @@ export interface CreateQuoteResponse extends ApiResponse<Quote> {
   data: Quote
 }
 
-export interface GetQuotesResponse extends ApiResponse<Quote[]> {
-  data: Quote[]
+export interface AdminQuoteListItem {
+  id?: string
+  _id?: string
+  referenceId: string
+  customerName: string
+  vehicle: string
+  route: string
+  status: string
+}
+
+export interface GetQuotesResponse extends ApiResponse<{ quoteRequests: AdminQuoteListItem[], meta: any }> {
+  data: {
+    quoteRequests: AdminQuoteListItem[]
+    meta: {
+      isFirstPage: boolean
+      isLastPage: boolean
+      currentPage: number
+      previousPage: number | null
+      nextPage: number | null
+      pageCount?: number
+      totalCount?: number
+    }
+  }
 }
 
 export interface QuoteRequestResponse extends ApiResponse<QuoteRequest> {
@@ -110,8 +131,14 @@ export const adminQuoteApi = {
   },
 
   /** GET /api/admin/quotes — List all generated quotes */
-  getAllQuotes(): Promise<GetQuotesResponse> {
-    return apiClient.get<GetQuotesResponse>('/admin/quotes')
+  getAllQuotes(params?: { page?: number; limit?: number; search?: string }): Promise<GetQuotesResponse> {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', params.page.toString())
+    if (params?.limit) query.append('limit', params.limit.toString())
+    if (params?.search) query.append('search', params.search)
+    
+    const queryString = query.toString()
+    return apiClient.get<GetQuotesResponse>(`/admin/quotes/list${queryString ? `?${queryString}` : ''}`)
   },
 
   /** GET /api/admin/quotes/request/:id — Get a specific quote's details */

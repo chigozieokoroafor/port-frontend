@@ -66,6 +66,17 @@ async function request<T>( endpoint: string, options: RequestOptions = {} ): Pro
             }
         }
         const errorMessage = data.message || data.error || 'API request failed'
+        
+        if (globalThis.window !== undefined) {
+            import('@/hooks/use-toast').then(({ toast }) => {
+                toast({
+                    title: "Error",
+                    description: errorMessage,
+                    variant: "destructive",
+                })
+            })
+        }
+
         throw new ApiError(response.status, errorMessage, data)
     }
 

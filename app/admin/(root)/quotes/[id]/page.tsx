@@ -10,6 +10,7 @@ import { DetailField, adminTabTriggerClass, UpdateStatusDropdown, SpinnerInput }
 import { QuoteDetail, QuoteStatus } from "@/components/admin/type"
 import { useRouter, useParams } from "next/navigation"
 import { adminQuoteApi } from "@/lib/api/quotes"
+import { shipmentApi } from "@/lib/api/shipment"
 
 interface AdminPricing {
     shippingCost: number
@@ -203,6 +204,7 @@ export default function AdminQuoteDetailPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [isSending, setIsSending] = useState(false)
+    const [isConverting, setIsConverting] = useState(false)
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
     const [hasExistingQuote, setHasExistingQuote] = useState(false)
 
@@ -304,14 +306,47 @@ export default function AdminQuoteDetailPage() {
         if (!quoteId || isSending) return
         setIsSending(true)
         try {
-            // Persist latest pricing first, then send
-            await adminQuoteApi.updateQuote(quoteId, { ...pricing })
-            await adminQuoteApi.sendQuote(quoteId)
+            await adminQuoteApi.generateQuote(quoteId, {
+                shippingCost: pricing.shippingCost,
+                insurance: pricing.insurance,
+                handlingFees: pricing.handlingFees,
+                customsAndDocumentation: pricing.customsDocumentation,
+                notes: pricing.notes,
+            })
+            
             setStatus("Sent")
+            setHasExistingQuote(true)
+            import('@/hooks/use-toast').then(({ toast }) => {
+                toast({
+                    title: "Success",
+                    description: "Quote generated and sent successfully",
+                })
+            })
         } catch (err) {
             console.error("Failed to send quote:", err)
         } finally {
             setIsSending(false)
+        }
+    }
+
+    // ── Convert to Shipment ──────────────────────────────────────────────────
+
+    const handleConvertToShipment = async () => {
+        if (!quoteId || isConverting) return
+        setIsConverting(true)
+        try {
+            await shipmentApi.createShipment({ quoteRequestId: quoteId })
+            import('@/hooks/use-toast').then(({ toast }) => {
+                toast({
+                    title: "Success",
+                    description: "Shipment created successfully",
+                })
+            })
+            router.push('/admin/shipments')
+        } catch (err) {
+            console.error("Failed to convert to shipment:", err)
+        } finally {
+            setIsConverting(false)
         }
     }
 
@@ -371,6 +406,7 @@ export default function AdminQuoteDetailPage() {
                         pricing={pricing}
                         onPricingChange={setPricing}
                         onSendQuote={handleSendQuote}
+                        onConvertToShipment={handleConvertToShipment}
                         isSending={isSending}
                         hasExistingQuote={hasExistingQuote}
                     />

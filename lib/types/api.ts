@@ -130,10 +130,11 @@ export interface CreateQuotePayload {
 }
 
 export interface GenerateQuotePayload {
-  price: number
-  currency?: string
-  notes?: string
-  validUntil?: string
+    shippingCost: number
+    insurance: number
+    handlingFees: number
+    customsAndDocumentation: number
+    notes?: string
 }
 
 export interface UpdateQuotePayload {

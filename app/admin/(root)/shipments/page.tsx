@@ -92,20 +92,33 @@ export default function AdminShipmentsPage({ onViewDetails }: AdminShipmentsPage
     const [loading, setLoading] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
     const [totalPages, setTotalPages] = useState(1)
+    const [metrics, setMetrics] = useState({
+        all: 0,
+        active: 0,
+        completed: 0,
+        delayed: 0
+    })
     const router = useRouter()
 
     const fetchShipments = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await shipmentApi.getAdminShipments({
-                page: currentPage,
-                limit: PAGE_SIZE,
-                search: search || undefined,
-                status: filter !== "Status" && filter !== "All" ? filter : undefined
-            })
+            const [res, metricsRes] = await Promise.all([
+                shipmentApi.getAdminShipments({
+                    page: currentPage,
+                    limit: PAGE_SIZE,
+                    search: search || undefined,
+                    status: filter !== "Status" && filter !== "All" ? filter : undefined
+                }),
+                shipmentApi.getAdminShipmentMetrics()
+            ])
             
             setShipments(res.data)
             setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+            
+            if (metricsRes.data) {
+                setMetrics(metricsRes.data)
+            }
         } catch (error) {
             console.error("Failed to load shipments:", error)
         } finally {
@@ -143,10 +156,10 @@ export default function AdminShipmentsPage({ onViewDetails }: AdminShipmentsPage
 
             {/* Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard count={25} label="All Shipments" icon={<AllShipmentsIcon />} />
-                <StatCard count={25} label="Active Shipments" icon={<ActiveShipmentsIcon />} />
-                <StatCard count={25} label="Completed Shipments" icon={<CompletedShipmentsIcon />} />
-                <StatCard count={25} label="Delayed Shipments" icon={<DelayedShipmentsIcon />} />
+                <StatCard count={metrics.all} label="All Shipments" icon={<AllShipmentsIcon />} />
+                <StatCard count={metrics.active} label="Active Shipments" icon={<ActiveShipmentsIcon />} />
+                <StatCard count={metrics.completed} label="Completed Shipments" icon={<CompletedShipmentsIcon />} />
+                <StatCard count={metrics.delayed} label="Delayed Shipments" icon={<DelayedShipmentsIcon />} />
             </div>
 
             {/* Shipments Table */}

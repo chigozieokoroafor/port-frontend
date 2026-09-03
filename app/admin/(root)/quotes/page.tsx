@@ -11,30 +11,17 @@ import Link from "next/link"
 
 const PAGE_SIZE = 10
 
-function formatVehicle(info?: Record<string, any>): string {
-    if (!info) return "—"
-    const { make, model, year } = info
-    return [make, model, year].filter(Boolean).join(" ")
-}
-
-function formatRoute(info?: Record<string, any>): string {
-    if (!info) return "—"
-    const { originCountry, destinationCountry } = info
-    if (originCountry && destinationCountry) return `${originCountry}\n→ ${destinationCountry}`
-    return "—"
-}
-
-const isNew = (createdAt: string) =>
-    new Date(createdAt).getTime() > Date.now() - 24 * 60 * 60 * 1000
+const isNew = (status: string) => status === "New" || status === "Pending"
 
 
 export default function AdminQuotesPage() {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState(FILTER_OPTIONS[0])
-    const [requests, setRequests] = useState<QuoteRequest[]>([])
+    const [requests, setRequests] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
     const [metrics, setMetrics] = useState({
         newQuotes: 0,
         allQuotes: 0,
@@ -43,19 +30,21 @@ export default function AdminQuotesPage() {
     })
     const router = useRouter()
 
-    function onViewDetails(id: string) {
-        router.push(`/admin/quotes/${id}`)
-    }
-
     const fetchQuotes = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
             const [res, metricsRes] = await Promise.all([
-                quoteApi.getAllQuoteRequests(),
+                adminQuoteApi.getAllQuotes({
+                    page: currentPage,
+                    limit: PAGE_SIZE,
+                    search: search || undefined
+                }),
                 adminQuoteApi.getMetrics()
             ])
-            setRequests(res.data.requests ?? [])
+            setRequests(res.data?.quoteRequests ?? [])
+            setTotalPages(res.data?.meta?.pageCount || Math.ceil((res.data?.meta?.totalCount || res.data?.quoteRequests?.length || 0) / PAGE_SIZE) || 1)
+            
             if (metricsRes.data) {
                 setMetrics(metricsRes.data)
             }
@@ -65,10 +54,13 @@ export default function AdminQuotesPage() {
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [currentPage, search])
 
     useEffect(() => {
-        fetchQuotes()
+        const timer = setTimeout(() => {
+            fetchQuotes()
+        }, 300)
+        return () => clearTimeout(timer)
     }, [fetchQuotes])
 
     // Reset to page 1 whenever search or filter changes
@@ -78,28 +70,18 @@ export default function AdminQuotesPage() {
 
     const filtered = useMemo(() => {
         return requests.filter(q => {
-            const matchesSearch =
-                !search ||
-                q.referenceId.toLowerCase().includes(search.toLowerCase()) ||
-                q.status.toLowerCase().includes(search.toLowerCase()) ||
-                q.customer?.name?.toLowerCase().includes(search.toLowerCase())
-
             const matchesFilter =
                 !filter ||
-                filter === FILTER_OPTIONS[0] || // "All" option
-                q.status === filter
+                filter === FILTER_OPTIONS[0] || // "All Quotes" option
+                q.status === filter ||
+                (filter === "Pending Quotes" && q.status === "Pending") ||
+                (filter === "Approved Quotes" && q.status === "Approved") ||
+                (filter === "Rejected Quotes" && q.status === "Rejected")
 
-            return matchesSearch && matchesFilter
+            return matchesFilter
         })
-    }, [requests, search, filter])
+    }, [requests, filter])
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-    
-    // Clamp current page in case filtered results shrink
-    const safePage = Math.min(currentPage, totalPages)
-    const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
-
-    if (loading) return <div>Loading...</div>
     if (error) return <div>Error: {error}</div>
 
     return (
@@ -143,22 +125,26 @@ export default function AdminQuotesPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {paginated.map((q, i) => (
-                                    <tr key={q.id ?? i} className="border-b-[0.5px] border-[#BFBFBF] last:border-0">
+                                {filtered.map((q, i) => (
+                                    <tr key={q.id ?? q._id ?? i} className="border-b-[0.5px] border-[#BFBFBF] last:border-0">
                                         <td className="py-4 pr-6 text-[#6B7280] align-middle">{q.referenceId}</td>
-                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{q.customer?.fullName}</td>
-                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{formatVehicle(q.vehicle)}</td>
-                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{formatRoute(q.route)}</td>
+                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{q.customerName}</td>
+                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{q.vehicle}</td>
+                                        <td className="py-4 pr-6 text-[#6B7280] align-middle">{q.route}</td>
                                         <td className="py-4 pr-6 align-middle">
-                                            <QuoteStatusBadge status={q.status === "Pending" && isNew(q.createdAt) ? "New" : q.status} />
+                                            <QuoteStatusBadge status={isNew(q.status) ? "New" : q.status} />
                                         </td>
                                         <td className="py-4 align-middle">
-                                            <Link
-                                                href={`/admin/quotes/${q._id}`}
-                                                className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
-                                            >
-                                                View Details
-                                            </Link>
+                                            {q.id || q._id ? (
+                                                <Link
+                                                    href={`/admin/quotes/${q.id || q._id}`}
+                                                    className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
+                                                >
+                                                    View Details
+                                                </Link>
+                                            ) : (
+                                                <span className="text-gray-400 text-sm whitespace-nowrap">Missing ID</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -166,7 +152,7 @@ export default function AdminQuotesPage() {
                         </table>
                     </div>
 
-                    <Pagination current={safePage} total={totalPages} onChange={setCurrentPage} />
+                    <Pagination current={currentPage} total={totalPages} onChange={setCurrentPage} />
                 </CardContent>
             </Card>
         </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,33 +9,14 @@ import { Separator } from "@/components/ui/separator"
 import { CheckCircle2 } from "lucide-react"
 import { StatCard, SearchFilterBar, Pagination } from "@/components/admin/comp"
 import { cn } from "@/lib/utils"
+import { paymentApi, AdminPayment } from "@/lib/api/payment"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PaymentStatus = "Paid" | "Pending" | "Failed" | "Overdue"
+type PaymentStatus = "Paid" | "Pending" | "Failed" | "Overdue" | "Completed"
 
-interface Payment {
-    id: string
-    customerName: string
-    shipmentId: string
-    date: string
-    status: PaymentStatus
-}
-
-// ── Mock Data ─────────────────────────────────────────────────────────────────
-
-const MOCK_PAYMENTS: Payment[] = [
-    { id: "PAY-1024", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-    { id: "PAY-1025", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-    { id: "PAY-1026", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Failed" },
-    { id: "PAY-1027", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Pending" },
-    { id: "PAY-1028", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-    { id: "PAY-1029", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-    { id: "PAY-1030", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-    { id: "PAY-1031", customerName: "John Anderson", shipmentId: "SH-1024", date: "Jan 30, 2026", status: "Paid" },
-]
-
-const FILTER_OPTIONS = ["All", "Paid", "Pending", "Overdue"]
+const FILTER_OPTIONS = ["All", "Paid", "Pending", "Overdue", "Completed"]
+const PAGE_SIZE = 10
 
 // ── Stat Icons ────────────────────────────────────────────────────────────────
 
@@ -78,6 +59,7 @@ function FailedPaymentsIcon() {
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
     const styles: Record<PaymentStatus, string> = {
         Paid: "bg-green-100 text-green-700 hover:bg-green-100",
+        Completed: "bg-green-100 text-green-700 hover:bg-green-100",
         Pending: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100",
         Failed: "bg-red-100 text-red-700 hover:bg-red-100",
         Overdue: "bg-orange-100 text-orange-700 hover:bg-orange-100",
@@ -219,15 +201,50 @@ function PaymentReceiptDialog({
 export default function AdminPaymentsPage() {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState("Status")
-    const [receiptPaymentId, setReceiptPaymentId] = useState<string | null>(null)
+    const [payments, setPayments] = useState<AdminPayment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
+    const [metrics, setMetrics] = useState({
+        totalReceived: 0,
+        pendingPayments: 0,
+        failedPayments: 0
+    })
 
-    const filtered = MOCK_PAYMENTS.filter(
-        (p) =>
-            !search ||
-            p.id.toLowerCase().includes(search.toLowerCase()) ||
-            p.customerName.toLowerCase().includes(search.toLowerCase()) ||
-            p.shipmentId.toLowerCase().includes(search.toLowerCase())
-    )
+    const fetchPayments = useCallback(async () => {
+        setLoading(true)
+        try {
+            const [res, metricsRes] = await Promise.all([
+                paymentApi.getAdminPayments({
+                    page: currentPage,
+                    limit: PAGE_SIZE,
+                    search: search || undefined,
+                    status: filter !== "Status" && filter !== "All" && filter !== "All Payments" ? filter : undefined
+                }),
+                paymentApi.getAdminPaymentMetrics()
+            ])
+            setPayments(res.data)
+            setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+            if (metricsRes.data) {
+                setMetrics(metricsRes.data)
+            }
+        } catch (error) {
+            console.error("Failed to load admin payments:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [currentPage, search, filter])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchPayments()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchPayments])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
 
     return (
         <div className="space-y-6 lg:space-y-8">
@@ -239,9 +256,21 @@ export default function AdminPaymentsPage() {
 
             {/* Stat Cards — currency values */}
             <div className="grid grid-cols-3 gap-4">
-                <StatCard count={"£17,000" as any} label="Total Received" icon={<TotalReceivedIcon />} />
-                <StatCard count={"£11,300" as any} label="Pending Payments" icon={<PendingPaymentsIcon />} />
-                <StatCard count={"£4,700" as any} label="Failed Payments" icon={<FailedPaymentsIcon />} />
+                <StatCard 
+                    count={`$${metrics.totalReceived}` as any} 
+                    label="Total Received" 
+                    icon={<TotalReceivedIcon />} 
+                />
+                <StatCard 
+                    count={`$${metrics.pendingPayments}` as any} 
+                    label="Pending Payments" 
+                    icon={<PendingPaymentsIcon />} 
+                />
+                <StatCard 
+                    count={`$${metrics.failedPayments}` as any} 
+                    label="Failed Payments" 
+                    icon={<FailedPaymentsIcon />} 
+                />
             </div>
 
             {/* Payments Table */}
@@ -270,22 +299,30 @@ export default function AdminPaymentsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((p) => (
+                                {payments.map((p) => (
                                     <tr key={p.id} className="border-b border-gray-100 last:border-0">
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.id}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.paymentId || p.id}</td>
                                         <td className="py-4 pr-6 text-gray-700 align-middle">{p.customerName}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.shipmentId}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.date}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{p.shipmentId || '—'}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">
+                                            {new Intl.NumberFormat('en-GB', { style: 'currency', currency: p.currency || 'GBP' }).format(p.amount)}
+                                        </td>
                                         <td className="py-4 pr-6 align-middle">
-                                            <PaymentStatusBadge status={p.status} />
+                                            <PaymentStatusBadge status={p.status as PaymentStatus} />
                                         </td>
                                         <td className="py-4 align-middle">
-                                            <button
-                                                onClick={() => setReceiptPaymentId(p.id)}
-                                                className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
-                                            >
-                                                View Receipts
-                                            </button>
+                                            {p.receiptUrl ? (
+                                                <a
+                                                    href={p.receiptUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
+                                                >
+                                                    View Receipt
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-400 text-sm">No Receipt</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -293,16 +330,9 @@ export default function AdminPaymentsPage() {
                         </table>
                     </div>
 
-                    <Pagination current={1} total={40} />
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
                 </CardContent>
             </Card>
-
-            {/* Payment Receipt Dialog */}
-            <PaymentReceiptDialog
-                open={!!receiptPaymentId}
-                paymentId={receiptPaymentId ?? ""}
-                onClose={() => setReceiptPaymentId(null)}
-            />
         </div>
     )
 }

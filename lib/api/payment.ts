@@ -32,6 +32,31 @@ export interface GetUserPaymentHistoryResponse extends ApiResponse<Payment[]> {
   }
 }
 
+export interface AdminPayment {
+  id: string
+  paymentId: string
+  customerName: string
+  shipmentId: string | null
+  date: string
+  amount: number
+  currency: string
+  status: string
+  receiptUrl: string | null
+}
+
+export interface GetAdminPaymentsResponse extends ApiResponse<AdminPayment[]> {
+  data: AdminPayment[]
+  meta: {
+    isFirstPage: boolean
+    isLastPage: boolean
+    currentPage: number
+    previousPage: number | null
+    nextPage: number | null
+    pageCount: number
+    totalCount: number
+  }
+}
+
 export const paymentApi = {
   createPaymentV2(payload: CreatePaymentPayload): Promise<CreatePaymentResponse> {
     return apiClient.post<CreatePaymentResponse>('/payment/v2/create', payload)
@@ -43,5 +68,30 @@ export const paymentApi = {
     if (params?.limit) query.append('limit', params.limit.toString())
     const queryString = query.toString()
     return apiClient.get<GetUserPaymentHistoryResponse>(`/payment/history/user/${userId}${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getAdminPayments(params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<GetAdminPaymentsResponse> {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', params.page.toString())
+    if (params?.limit) query.append('limit', params.limit.toString())
+    if (params?.status && params.status !== "All Payments" && params.status !== "All" && params.status !== "Status") {
+      query.append('status', params.status)
+    }
+    if (params?.search) query.append('search', params.search)
+    
+    const queryString = query.toString()
+    return apiClient.get<GetAdminPaymentsResponse>(`/payment${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getAdminPaymentMetrics(): Promise<GetAdminPaymentMetricsResponse> {
+    return apiClient.get<GetAdminPaymentMetricsResponse>('/payment/admin/metrics')
+  }
+}
+
+export interface GetAdminPaymentMetricsResponse extends ApiResponse<{ totalReceived: number, pendingPayments: number, failedPayments: number }> {
+  data: {
+    totalReceived: number
+    pendingPayments: number
+    failedPayments: number
   }
 }
