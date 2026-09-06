@@ -1,6 +1,6 @@
 import { ApiError, ApiResponse } from '@/lib/types/api'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL|| "https://port-port-backend.onrender.com/api" || 'http://localhost:4000/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL + "/api"
 
 interface RequestOptions extends RequestInit {
     headers?: Record<string, string>

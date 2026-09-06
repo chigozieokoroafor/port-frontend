@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { FILTER_OPTIONS, Shipment, TabFilter } from "@/lib/types/constant"
-import { ActiveIcon, CompletedIcon, FailedIcon, PendingIcon, StatCard, StatusBadge } from "@/components/user-shipment/status-icon"
+import { ActiveIcon, CompletedIcon, PendingIcon, AllIcon, StatCard, StatusBadge } from "@/components/user-shipment/status-icon"
 import { ShipmentTab } from "@/components/user-shipment/bars"
 import { FilterDropdown } from "@/components/customer-dashboard/filter-dropdown"
 import { EmptyState } from "@/components/customer-dashboard/empty-state"
@@ -27,6 +27,12 @@ export default function MyShipmentsPage() {
     const [loading, setLoading] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
     const [totalPages, setTotalPages] = useState(1)
+    const [metrics, setMetrics] = useState({
+        all: 0,
+        active: 0,
+        completed: 0,
+        delayed: 0
+    })
     
     const router = useRouter()
 
@@ -36,15 +42,22 @@ export default function MyShipmentsPage() {
         try {
             const activeStatus = activeTab !== "All" ? activeTab : (filter !== "All Shipments" ? filter : undefined)
             
-            const res = await shipmentApi.getUserShipments(user.id, { 
-                page: currentPage, 
-                limit: PAGE_SIZE,
-                search: search || undefined,
-                status: activeStatus
-            })
+            const [res, metricsRes] = await Promise.all([
+                shipmentApi.getUserShipments(user.id, { 
+                    page: currentPage, 
+                    limit: PAGE_SIZE,
+                    search: search || undefined,
+                    status: activeStatus
+                }),
+                shipmentApi.getUserShipmentMetrics(user.id)
+            ])
             
             setShipments(res.data)
             setTotalPages(res.meta?.pageCount || Math.ceil((res.meta?.totalCount || res.data.length) / PAGE_SIZE) || 1)
+            
+            if (metricsRes.data) {
+                setMetrics(metricsRes.data)
+            }
         } catch (error) {
             console.error("Failed to load shipments:", error)
         } finally {
@@ -64,7 +77,6 @@ export default function MyShipmentsPage() {
         setCurrentPage(1)
     }, [search, activeTab, filter])
 
-    const stats = { active: 0, completed: 0, pending: 0, failed: 0 }
     const isEmpty = shipments.length === 0 && !loading && !search && activeTab === "All" && filter === "All Shipments"
 
     function onViewDetails(id: string) {
@@ -92,10 +104,10 @@ export default function MyShipmentsPage() {
 
             {/* Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard count={stats.active} label="Active Shipments" icon={<ActiveIcon />} />
-                <StatCard count={stats.completed} label="Completed Shipments" icon={<CompletedIcon />} />
-                <StatCard count={stats.pending} label="Pending Shipments" icon={<PendingIcon />} />
-                <StatCard count={stats.failed} label="Failed Shipments" icon={<FailedIcon />} />
+                <StatCard count={metrics.all} label="All Shipments" icon={<AllIcon />} />
+                <StatCard count={metrics.active} label="Active Shipments" icon={<ActiveIcon />} />
+                <StatCard count={metrics.completed} label="Completed Shipments" icon={<CompletedIcon />} />
+                <StatCard count={metrics.delayed} label="Delayed Shipments" icon={<PendingIcon />} />
             </div>
             {isEmpty ? (
                 <EmptyState emptyText="No Shipment Found" />

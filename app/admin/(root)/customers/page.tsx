@@ -1,38 +1,21 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatCard, SearchFilterBar, Pagination } from "@/components/admin/comp"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { adminCustomerApi, AdminCustomerListItem } from "@/lib/api/customer"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type CustomerStatus = "Active" | "Inactive"
 
-interface Customer {
-    id: string
-    name: string
-    email: string
-    shipments: number
-    status: CustomerStatus
-}
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-// ── Mock Data ─────────────────────────────────────────────────────────────────
-
-const MOCK_CUSTOMERS: Customer[] = [
-    { id: "CUST-00124", name: "John Anderson", email: "john.anderson@gmail.com", shipments: 3, status: "Active" },
-    { id: "CUST-00125", name: "Maria Santos", email: "maria.santos@gmail.com", shipments: 5, status: "Active" },
-    { id: "CUST-00126", name: "Sarah Williams", email: "sarah.williams@gmail.com", shipments: 10, status: "Active" },
-    { id: "CUST-00127", name: "David Park", email: "david.park@gmail.com", shipments: 1, status: "Active" },
-    { id: "CUST-00128", name: "Robert Chen", email: "robert.chen@gmail.com", shipments: 0, status: "Inactive" },
-    { id: "CUST-00129", name: "Emma Johnson", email: "emma.johnson@gmail.com", shipments: 20, status: "Active" },
-    { id: "CUST-00130", name: "Michael Brown", email: "michael.brown@gmail.com", shipments: 12, status: "Active" },
-    { id: "CUST-00131", name: "Lisa Garcia", email: "lisa.garcia@gmail.com", shipments: 7, status: "Active" },
-]
-
-const FILTER_OPTIONS = ["Active", "Inactive"]
+const FILTER_OPTIONS = ["All", "Active", "Inactive"]
+const PAGE_SIZE = 10
 
 // ── Stat Icons ────────────────────────────────────────────────────────────────
 
@@ -86,17 +69,50 @@ interface AdminCustomersPageProps {
 export default function AdminCustomersPage({ onViewDetails }: Readonly<AdminCustomersPageProps>) {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState("Status")
-
-    const filtered = MOCK_CUSTOMERS.filter((c) => {
-        const matchesSearch =
-            !search ||
-            c.id.toLowerCase().includes(search.toLowerCase()) ||
-            c.name.toLowerCase().includes(search.toLowerCase()) ||
-            c.email.toLowerCase().includes(search.toLowerCase())
-        const matchesFilter =
-            filter === "Status" || c.status === filter
-        return matchesSearch && matchesFilter
+    const [customers, setCustomers] = useState<AdminCustomerListItem[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
+    const [metrics, setMetrics] = useState({
+        all: 0,
+        active: 0,
+        inactive: 0
     })
+
+    const fetchCustomers = useCallback(async () => {
+        setLoading(true)
+        try {
+            const [res, metricsRes] = await Promise.all([
+                adminCustomerApi.getCustomers({
+                    page: currentPage,
+                    limit: PAGE_SIZE,
+                    search: search || undefined,
+                    status: filter !== "Status" && filter !== "All" && filter !== "All Customers" ? filter : undefined
+                }),
+                adminCustomerApi.getCustomerMetrics()
+            ])
+            setCustomers(res.data.customers)
+            setTotalPages(res.data.meta?.pageCount || Math.ceil((res.data.meta?.totalCount || res.data.customers.length) / PAGE_SIZE) || 1)
+            if (metricsRes.data) {
+                setMetrics(metricsRes.data)
+            }
+        } catch (error) {
+            console.error("Failed to load admin customers:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [currentPage, search, filter])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchCustomers()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchCustomers])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
 
     return (
         <div className="space-y-6 lg:space-y-8">
@@ -108,8 +124,8 @@ export default function AdminCustomersPage({ onViewDetails }: Readonly<AdminCust
 
             {/* Stat Cards — 2 columns */}
             <div className="grid grid-cols-2 gap-4">
-                <StatCard count={25} label="Inactive Customers" icon={<InactiveCustomersIcon />} />
-                <StatCard count={25} label="Active Customers" icon={<ActiveCustomersIcon />} />
+                <StatCard count={metrics.inactive} label="Inactive Customers" icon={<InactiveCustomersIcon />} />
+                <StatCard count={metrics.active} label="Active Customers" icon={<ActiveCustomersIcon />} />
             </div>
 
             {/* Customers Table */}
@@ -143,17 +159,17 @@ export default function AdminCustomersPage({ onViewDetails }: Readonly<AdminCust
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((c, i) => (
-                                    <tr key={i+1} className="border-b border-gray-100 last:border-0">
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.id}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.name}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.email}</td>
-                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.shipments}</td>
+                                {customers.map((c, i) => (
+                                    <tr key={c.customerId || i} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.customerId}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.customerName}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.emailAddress}</td>
+                                        <td className="py-4 pr-6 text-gray-700 align-middle">{c.numberOfShipments}</td>
                                         <td className="py-4 pr-6 align-middle">
-                                            <CustomerStatusBadge status={c.status} />
+                                            <CustomerStatusBadge status={c.status as CustomerStatus} />
                                         </td>
                                         <td className="py-4 align-middle">
-                                            <Link href={`/admin/customers/${c.id}`} className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap">
+                                            <Link href={`/admin/customers/${c.customerId}`} className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap">
                                                 View Details
                                             </Link>
                                         </td>
@@ -163,7 +179,7 @@ export default function AdminCustomersPage({ onViewDetails }: Readonly<AdminCust
                         </table>
                     </div>
 
-                    <Pagination current={1} total={40} />
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
                 </CardContent>
             </Card>
         </div>
