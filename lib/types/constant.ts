@@ -14,7 +14,8 @@ export interface Shipment {
     vehicle: string
     route: string
     status: ShipmentStatus
-    estimatedArrival: string | null
+    estimatedArrival: string | null,
+    customer: string|null
 }
 
 

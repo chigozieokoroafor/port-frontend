@@ -32,6 +32,21 @@ export interface GetCustomerMetricsResponse extends ApiResponse<{ all: number, a
   }
 }
 
+export interface GetCustomerProfileResponse extends ApiResponse<any> {
+  data: {
+    id: string
+    status: string
+    initials: string
+    firstName: string
+    lastName: string
+    name: string
+    email: string
+    phoneNumber: string | null
+    company: string | null
+    customerSince: string
+  }
+}
+
 export const adminCustomerApi = {
   getCustomers(params?: { page?: number; limit?: number; status?: string; search?: string }): Promise<GetCustomersResponse> {
     const query = new URLSearchParams()
@@ -48,5 +63,9 @@ export const adminCustomerApi = {
 
   getCustomerMetrics(): Promise<GetCustomerMetricsResponse> {
     return apiClient.get<GetCustomerMetricsResponse>('/customers/metrics')
+  },
+
+  getCustomerProfile(id: string): Promise<GetCustomerProfileResponse> {
+    return apiClient.get<GetCustomerProfileResponse>(`/customers/${id}`)
   }
 }

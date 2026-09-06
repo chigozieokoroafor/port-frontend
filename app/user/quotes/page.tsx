@@ -225,7 +225,7 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-gray-200">
-                                            {["Reference ID", "Vehicle", "Route", "Status", "Submitted"].map(h => (
+                                            {["Reference ID", "Customer", "Vehicle", "Route", "Status", "Submitted"].map(h => (
                                                 <th
                                                     key={h}
                                                     className="text-left font-semibold text-[#111827] pb-3 pr-6 last:pr-0"
@@ -248,6 +248,9 @@ export default function MyQuotesPage({ isEmpty = false }: Readonly<MyQuotesPageP
                                                 <tr key={q._id || q.id} className="border-b border-gray-100 last:border-0">
                                                     <td className="py-4 pr-6 text-gray-700 align-top font-mono text-xs">
                                                         {q.referenceId}
+                                                    </td>
+                                                    <td className="py-4 pr-6 text-gray-700 align-top">
+                                                        {q.customer?.name || q.customer?.fullName || '—'}
                                                     </td>
                                                     <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-line">
                                                         {formatVehicle(q.vehicle)}

@@ -13,7 +13,15 @@ import {
     DetailField,
     QuoteStatusBadge,
     adminTabTriggerClass,
+    Pagination
 } from "@/components/admin/comp"
+import { useParams } from "next/navigation"
+import { shipmentApi } from "@/lib/api/shipment"
+import { quoteApi } from "@/lib/api/quotes"
+import { paymentApi } from "@/lib/api/payment"
+import { adminCustomerApi, GetCustomerProfileResponse } from "@/lib/api/customer"
+import { Shipment, QuoteRequest, Payment } from "@/lib/types/constant"
+import { useEffect, useCallback } from "react"
 import { QuoteStatus } from "@/components/admin/type"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
@@ -27,17 +35,13 @@ type ShipmentStatus =
     | "Delayed"
     | "Port of Origin"
     | "Port of Destination"
+    | "Pending"
+    | "Failed"
+    | "Loaded On Vessel"
+    | "Vehicle Received"
 
 type DocStatus = "Approved" | "Pending" | "Rejected"
 type PaymentStatus = "Paid" | "Pending" | "Failed"
-
-interface ShipmentRow {
-    id: string
-    customerName: string
-    vehicle: string
-    route: string
-    status: ShipmentStatus
-}
 
 interface QuoteRow {
     id: string
@@ -60,45 +64,33 @@ interface PaymentRow {
     status: PaymentStatus
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatVehicle(info?: Record<string, any>): string {
+    if (!info) return "—"
+    const { make, model, year } = info
+    return [make, model, year].filter(Boolean).join(" ")
+}
+
+function formatRoute(info?: Record<string, any>): string {
+    if (!info) return "—"
+    const { originCountry, destinationCountry, originPort, destinationPort } = info
+    if (originCountry && destinationCountry) {
+        return `${originPort || originCountry} → ${destinationPort || destinationCountry}`
+    }
+    return "—"
+}
+
 // ── Mock Data ─────────────────────────────────────────────────────────────────
 
-const MOCK_SHIPMENTS: ShipmentRow[] = [
-    { id: "QT-5429", customerName: "John Anderson", vehicle: "Toyota Camry 2020", route: "Los Angeles → Tokyo", status: "Port of Origin" },
-    { id: "QT-5428", customerName: "Maria Santos", vehicle: "WilliamsMercedes C-...", route: "New York → London", status: "In Transit" },
-    { id: "QT-5427", customerName: "Sarah Williams", vehicle: "Honda CR-V 2021", route: "Miami → Dubai", status: "Delivered" },
-    { id: "QT-5426", customerName: "David Park", vehicle: "BMW X5 2022", route: "Seattle → Sydney", status: "Custom Clearance" },
-    { id: "QT-5425", customerName: "Robert Chen", vehicle: "Mercedes C-Class 2019", route: "San Francisco → Seoul", status: "Delivered" },
-    { id: "QT-5424", customerName: "Emma Johnson", vehicle: "Audi A4 2020", route: "Chicago → Hamburg", status: "Delayed" },
-    { id: "QT-5423", customerName: "Michael Brown", vehicle: "Ford F-150 2021", route: "Houston → Rotterdam", status: "Delayed" },
-    { id: "QT-5422", customerName: "Lisa Garcia", vehicle: "Nissan Altima 2022", route: "Phoenix → Barcelona", status: "Delivered" },
-]
-
-const MOCK_QUOTES: QuoteRow[] = [
-    { id: "QT-5429", customerName: "John Anderson", vehicle: "Toyota Camry 2020", route: "Los Angeles → Tokyo", status: "New" },
-    { id: "QT-5428", customerName: "Maria Santos", vehicle: "WilliamsMercedes C-...", route: "New York → London", status: "In Review" },
-    { id: "QT-5427", customerName: "Sarah Williams", vehicle: "Honda CR-V 2021", route: "Miami → Dubai", status: "Accepted" },
-    { id: "QT-5426", customerName: "David Park", vehicle: "BMW X5 2022", route: "Seattle → Sydney", status: "New" },
-    { id: "QT-5425", customerName: "Robert Chen", vehicle: "Mercedes C-Class 2019", route: "San Francisco → Seoul", status: "New" },
-    { id: "QT-5424", customerName: "Emma Johnson", vehicle: "Audi A4 2020", route: "Chicago → Hamburg", status: "New" },
-    { id: "QT-5423", customerName: "Michael Brown", vehicle: "Ford F-150 2021", route: "Houston → Rotterdam", status: "New" },
-    { id: "QT-5422", customerName: "Lisa Garcia", vehicle: "Nissan Altima 2022", route: "Phoenix → Barcelona", status: "New" },
-]
+const MOCK_SHIPMENTS: any[] = []
+const MOCK_QUOTES: any[] = []
+const MOCK_PAYMENTS: any[] = []
 
 const MOCK_DOCUMENTS: DocumentRow[] = [
     { name: "Bill of Lading.pdf", uploadedDate: "Jan 28, 2026", status: "Approved" },
     { name: "Insurance Certificate.pdf", uploadedDate: "Jan 26, 2026", status: "Approved" },
     { name: "Insurance Certificate.pdf", uploadedDate: "Jan 26, 2026", status: "Approved" },
-]
-
-const MOCK_PAYMENTS: PaymentRow[] = [
-    { shipmentId: "SH-5429", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5428", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5427", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5426", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5425", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5424", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5423", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
-    { shipmentId: "SH-5422", amount: "£3,500.00", date: "Jan 26, 2026", status: "Paid" },
 ]
 
 const SHIPMENT_FILTER_OPTIONS = ["All", "In Transit", "Delivered", "Custom Clearance", "Delayed", "Port of Origin"]
@@ -191,32 +183,72 @@ function PaymentStatusBadge({ status }: Readonly<{ status: PaymentStatus }>) {
 
 // ── Tab: Profile Information ──────────────────────────────────────────────────
 
-function ProfileInformationTab() {
+function ProfileInformationTab({ customerId }: Readonly<{ customerId: string }>) {
+    const [profile, setProfile] = useState<GetCustomerProfileResponse["data"] | null>(null)
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        let mounted = true
+        setLoading(true)
+        adminCustomerApi.getCustomerProfile(customerId)
+            .then(res => {
+                if (mounted && res.data) setProfile(res.data)
+            })
+            .catch(err => console.error(err))
+            .finally(() => {
+                if (mounted) setLoading(false)
+            })
+        return () => { mounted = false }
+    }, [customerId])
+
+    if (loading) {
+        return (
+            <Card>
+                <CardContent className="p-6">
+                    <div className="py-8 text-center text-gray-500">Loading profile...</div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!profile) {
+        return (
+            <Card>
+                <CardContent className="p-6">
+                    <div className="py-8 text-center text-gray-500">Profile not found.</div>
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
         <Card>
             <CardContent className="p-6 space-y-6">
                 <div className="flex items-start justify-between">
                     <h2 className="text-base font-semibold text-[#111827]">Profile Information</h2>
-                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 font-medium text-xs px-3 py-1">
-                        Active
+                    <Badge className={cn(
+                        "font-medium text-xs px-3 py-1 border-0",
+                        profile.status === "Active" ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-gray-100 text-gray-600 hover:bg-gray-100"
+                    )}>
+                        {profile.status}
                     </Badge>
                 </div>
 
                 {/* Avatar */}
                 <Avatar className="w-16 h-16">
-                    <AvatarImage src="/avatars/john.jpg" alt="John Anderson" />
+                    {/* <AvatarImage src="/avatars/john.jpg" alt={profile.name} /> */}
                     <AvatarFallback className="bg-gray-200 text-gray-500 text-lg font-medium">
-                        JA
+                        {profile.initials}
                     </AvatarFallback>
                 </Avatar>
 
                 {/* Info grid */}
                 <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                    <DetailField label="Name" value="John Anderson" />
-                    <DetailField label="Email Address" value="john.anderson@email.com" />
-                    <DetailField label="Phone Number" value="+1 (555) 123-4567" />
-                    <DetailField label="Company" value="Anderson Motors LLC" />
-                    <DetailField label="Customer Since" value="November 1, 2025" />
+                    <DetailField label="Name" value={profile.name} />
+                    <DetailField label="Email Address" value={profile.email} />
+                    <DetailField label="Phone Number" value={profile.phoneNumber || "—"} />
+                    <DetailField label="Company" value={profile.company || "—"} />
+                    <DetailField label="Customer Since" value={new Date(profile.customerSince).toLocaleDateString("en-US", { year: 'numeric', month: 'long', day: 'numeric' })} />
                 </div>
             </CardContent>
         </Card>
@@ -225,17 +257,42 @@ function ProfileInformationTab() {
 
 // ── Tab: Shipment History ─────────────────────────────────────────────────────
 
-function ShipmentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: string) => void }>) {
+function ShipmentHistoryTab({ customerId }: Readonly<{ customerId: string }>) {
     const [search, setSearch] = useState("")
-    const [filter, setFilter] = useState("Status")
+    const [filter, setFilter] = useState("All")
+    const [shipments, setShipments] = useState<Shipment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
 
-    const filtered = MOCK_SHIPMENTS.filter(
-        (s) =>
-            !search ||
-            s.id.toLowerCase().includes(search.toLowerCase()) ||
-            s.customerName.toLowerCase().includes(search.toLowerCase()) ||
-            s.vehicle.toLowerCase().includes(search.toLowerCase())
-    )
+    const fetchShipments = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await shipmentApi.getUserShipments(customerId, {
+                page: currentPage,
+                limit: 10,
+                search: search || undefined,
+                status: filter !== "Status" && filter !== "All" ? filter : undefined
+            })
+            setShipments(res.data)
+            setTotalPages(res.meta?.pageCount || 1)
+        } catch (error) {
+            console.error("Failed to load user shipments:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [customerId, currentPage, search, filter])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchShipments()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchShipments])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
 
     return (
         <Card>
@@ -263,28 +320,40 @@ function ShipmentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: s
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((s) => (
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-gray-500">Loading...</td>
+                                </tr>
+                            ) : shipments.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-gray-500">No shipments found.</td>
+                                </tr>
+                            ) : shipments.map((s) => (
                                 <tr key={s.id} className="border-b border-gray-100 last:border-0">
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{s.id}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{s.customerName}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{s.vehicle}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{s.route}</td>
-                                    <td className="py-4 pr-6 align-middle">
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{s.shipmentId || s.id}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{s.customer || '—'}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{s.vehicle}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{s.route}</td>
+                                    <td className="py-4 pr-6 align-top">
                                         <ShipmentStatusBadge status={s.status} />
                                     </td>
-                                    <td className="py-4 align-middle">
-                                        <button
-                                            onClick={() => onViewDetails?.(s.id)}
+                                    <td className="py-4 align-top">
+                                        <Link
+                                            href={`/admin/shipments/${s.id}`}
                                             className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
                                         >
                                             View Details
-                                        </button>
+                                        </Link>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
+
+                {!loading && shipments.length > 0 && (
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
+                )}
             </CardContent>
         </Card>
     )
@@ -292,16 +361,49 @@ function ShipmentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: s
 
 // ── Tab: Quote History ────────────────────────────────────────────────────────
 
-function QuoteHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: string) => void }>) {
+function QuoteHistoryTab({ customerId }: Readonly<{ customerId: string }>) {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState("Status")
+    const [quotes, setQuotes] = useState<QuoteRequest[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
 
-    const filtered = MOCK_QUOTES.filter(
+    const fetchQuotes = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await quoteApi.getUserQuoteRequests(customerId, {
+                page: currentPage,
+                limit: 10,
+            })
+            setQuotes(res.data?.quoteRequests ?? [])
+            setTotalPages(res.data?.meta?.pageCount || 1)
+        } catch (error) {
+            console.error("Failed to load user quotes:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [customerId, currentPage])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchQuotes()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchQuotes])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
+
+    // Client-side filtering if search is used, since API might not support it for this endpoint yet
+    const filtered = quotes.filter(
         (q) =>
             !search ||
-            q.id.toLowerCase().includes(search.toLowerCase()) ||
-            q.customerName.toLowerCase().includes(search.toLowerCase()) ||
-            q.vehicle.toLowerCase().includes(search.toLowerCase())
+            q.referenceId?.toLowerCase().includes(search.toLowerCase()) ||
+            q.customer?.fullName?.toLowerCase().includes(search.toLowerCase()) ||
+            q.customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
+            formatVehicle(q.vehicle).toLowerCase().includes(search.toLowerCase())
     )
 
     return (
@@ -330,28 +432,40 @@ function QuoteHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: stri
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((q, i) => (
-                                <tr key={q.id} className="border-b border-gray-100 last:border-0">
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{q.id}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{q.customerName}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{q.vehicle}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{q.route}</td>
-                                    <td className="py-4 pr-6 align-middle">
-                                        <QuoteStatusBadge status={q.status} />
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-gray-500">Loading...</td>
+                                </tr>
+                            ) : filtered.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="py-8 text-center text-gray-500">No quotes found.</td>
+                                </tr>
+                            ) : filtered.map((q) => (
+                                <tr key={q.id || q._id} className="border-b border-gray-100 last:border-0">
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{q.referenceId}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{q.customer?.name || q.customer?.fullName || '—'}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{formatVehicle(q.vehicle)}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{formatRoute(q.route)}</td>
+                                    <td className="py-4 pr-6 align-top">
+                                        <QuoteStatusBadge status={q.status as QuoteStatus} />
                                     </td>
-                                    <td className="py-4 align-middle">
-                                        <button
-                                            onClick={() => onViewDetails?.(q.id)}
+                                    <td className="py-4 align-top">
+                                        <Link
+                                            href={`/admin/quotes/${q.id || q._id}`}
                                             className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
                                         >
                                             View Details
-                                        </button>
+                                        </Link>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
+
+                {!loading && quotes.length > 0 && (
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
+                )}
             </CardContent>
         </Card>
     )
@@ -391,14 +505,46 @@ function DocumentsUploadedTab() {
 
 // ── Tab: Payment History ──────────────────────────────────────────────────────
 
-function PaymentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: string) => void }>) {
+function PaymentHistoryTab({ customerId }: Readonly<{ customerId: string }>) {
     const [search, setSearch] = useState("")
     const [filter, setFilter] = useState("Status")
+    const [payments, setPayments] = useState<Payment[]>([])
+    const [loading, setLoading] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalPages, setTotalPages] = useState(1)
 
-    const filtered = MOCK_PAYMENTS.filter(
+    const fetchPayments = useCallback(async () => {
+        setLoading(true)
+        try {
+            const res = await paymentApi.getUserPaymentHistory(customerId, {
+                page: currentPage,
+                limit: 10,
+            })
+            setPayments(res.data)
+            setTotalPages(res.meta?.pageCount || 1)
+        } catch (error) {
+            console.error("Failed to load user payments:", error)
+        } finally {
+            setLoading(false)
+        }
+    }, [customerId, currentPage])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchPayments()
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [fetchPayments])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search, filter])
+
+    // Client-side filtering since search/status might not be passed down to backend
+    const filtered = payments.filter(
         (p) =>
-            !search ||
-            p.shipmentId.toLowerCase().includes(search.toLowerCase())
+            (!search || p.id.toLowerCase().includes(search.toLowerCase()) || p.paymentId?.toLowerCase().includes(search.toLowerCase())) &&
+            (filter === "Status" || filter === "All" || p.status === filter.toLowerCase())
     )
 
     return (
@@ -410,7 +556,7 @@ function PaymentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: st
                         onSearchChange={setSearch}
                         filterValue={filter}
                         onFilterChange={setFilter}
-                        searchPlaceholder="Search by customer, vehicle or shipment ID"
+                        searchPlaceholder="Search by payment or shipment ID"
                         filterOptions={PAYMENT_FILTER_OPTIONS}
                     />
                 </div>
@@ -419,7 +565,7 @@ function PaymentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: st
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="border-b border-gray-200">
-                                {["Shipment ID", "Amount", "Date", "Status", "Action"].map((h) => (
+                                {["Payment ID", "Amount", "Date", "Status", "Action"].map((h) => (
                                     <th key={h} className="text-left font-semibold text-[#111827] pb-3 pr-6 last:pr-0">
                                         {h}
                                     </th>
@@ -427,27 +573,47 @@ function PaymentHistoryTab({ onViewDetails }: Readonly<{ onViewDetails?: (id: st
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((p, i) => (
-                                <tr key={p.shipmentId} className="border-b border-gray-100 last:border-0">
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{p.shipmentId}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{p.amount}</td>
-                                    <td className="py-4 pr-6 text-gray-700 align-middle">{p.date}</td>
-                                    <td className="py-4 pr-6 align-middle">
-                                        <PaymentStatusBadge status={p.status} />
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={5} className="py-8 text-center text-gray-500">Loading...</td>
+                                </tr>
+                            ) : filtered.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="py-8 text-center text-gray-500">No payments found.</td>
+                                </tr>
+                            ) : filtered.map((p) => (
+                                <tr key={p.id} className="border-b border-gray-100 last:border-0">
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">{p.paymentId || p.id}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">${p.amount}</td>
+                                    <td className="py-4 pr-6 text-gray-700 align-top whitespace-pre-wrap">
+                                        {new Date(p.createdAt).toLocaleDateString("en-GB")}
                                     </td>
-                                    <td className="py-4 align-middle">
-                                        <button
-                                            onClick={() => onViewDetails?.(p.shipmentId)}
-                                            className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
-                                        >
-                                            View Details
-                                        </button>
+                                    <td className="py-4 pr-6 align-top">
+                                        <PaymentStatusBadge status={p.status === "completed" ? "Paid" : p.status === "failed" ? "Failed" : "Pending"} />
+                                    </td>
+                                    <td className="py-4 align-top">
+                                        {p.receiptUrl ? (
+                                            <a
+                                                href={p.receiptUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[#2563EB] text-sm font-medium hover:underline whitespace-nowrap"
+                                            >
+                                                View Receipt
+                                            </a>
+                                        ) : (
+                                            <span className="text-gray-400 text-sm">—</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
+
+                {!loading && payments.length > 0 && (
+                    <Pagination current={currentPage} total={totalPages} onPageChange={setCurrentPage} />
+                )}
             </CardContent>
         </Card>
     )
@@ -465,13 +631,14 @@ interface AdminCustomerDetailPageProps {
 }
 
 export default function AdminCustomerDetailPage({
-    customerId = "CUST-00124",
     onBack,
     onContactCustomer,
     onViewShipmentDetails,
     onViewQuoteDetails,
     onViewPaymentDetails,
 }: Readonly<AdminCustomerDetailPageProps>) {
+    const params = useParams()
+    const customerId = (params?.id as string) || "CUST-00124"
     return (
         <div className="space-y-6 lg:space-y-8">
             {/* Header */}
@@ -525,15 +692,15 @@ export default function AdminCustomerDetailPage({
                 </TabsList>
 
                 <TabsContent value="profile">
-                    <ProfileInformationTab />
+                    <ProfileInformationTab customerId={customerId} />
                 </TabsContent>
 
                 <TabsContent value="shipments">
-                    <ShipmentHistoryTab onViewDetails={onViewShipmentDetails} />
+                    <ShipmentHistoryTab customerId={customerId} />
                 </TabsContent>
 
                 <TabsContent value="quotes">
-                    <QuoteHistoryTab onViewDetails={onViewQuoteDetails} />
+                    <QuoteHistoryTab customerId={customerId} />
                 </TabsContent>
 
                 <TabsContent value="documents">
@@ -541,7 +708,7 @@ export default function AdminCustomerDetailPage({
                 </TabsContent>
 
                 <TabsContent value="payments">
-                    <PaymentHistoryTab onViewDetails={onViewPaymentDetails} />
+                    <PaymentHistoryTab customerId={customerId} />
                 </TabsContent>
             </Tabs>
         </div>
